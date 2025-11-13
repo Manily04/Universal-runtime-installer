@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['Universal runtime installer.py'],
+    ['Programm.py'],
     pathex=[],
     binaries=[],
     datas=[],
@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='Universal runtime installer',
+    name='RuntimeInstaller',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

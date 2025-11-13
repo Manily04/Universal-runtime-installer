@@ -8,8 +8,8 @@ import queue
 import traceback
 import tempfile
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
 from tkinter import messagebox
+from ttkbootstrap.widgets.scrolled import ScrolledText
 
 def resource_path(relative_path):
     """
@@ -103,10 +103,13 @@ class InstallerGUI:
             }
 
         self.programs = [
-            {"name": "DirectX", "command": ["winget install Microsoft.DirectX --force"], "group": "other"},
+            {"name": "DirectX", "command": [
+                "powershell -Command \"$tempPath = Join-Path $env:TEMP 'directx_Jun2010_redist.exe'; Invoke-WebRequest -Uri 'https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe' -OutFile $tempPath; Start-Process -FilePath $tempPath -ArgumentList '/Q','/T:C:\\DirectXTemp' -Wait; Start-Process -FilePath 'C:\\DirectXTemp\\DXSETUP.exe' -ArgumentList '/silent' -Wait; Remove-Item $tempPath -Force; Remove-Item 'C:\\DirectXTemp' -Recurse -Force\""
+            ], "group": "other"},
             {"name": "Java Runtime", "command": ["winget install Oracle.JavaRuntimeEnvironment --force"], "group": "other"},
             {"name": "Net Runtime 8", "command": ["winget install Microsoft.DotNet.DesktopRuntime.8 --force"], "group": "other"},
-            {"name": "OpenAL", "command": ["winget install OpenAL.OpenAL --force"], "group": "other"},
+            {"name": "Net Runtime 10", "command": ["winget install Microsoft.DotNet.DesktopRuntime.10 --force"], "group": "other"},
+            {"name": "OpenAL", "command": ["winget install CreativeTechnology.OpenAL --force"], "group": "other"},
             {"name": "XNA Redist", "command": ["winget install Microsoft.XNARedist --force"], "group": "other"},
             {"name": "VC - Redist 2010", "command": [
                 "winget install Microsoft.VCRedist.2010.x64 --force",
@@ -114,7 +117,7 @@ class InstallerGUI:
             ], "group": "vc"},
             {"name": "VC - Redist 2012", "command": [
                 "winget install Microsoft.VCRedist.2012.x64 --force",
-                "winget install Microsoft.VCRedist.2012x86 --force"
+                "winget install Microsoft.VCRedist.2012.x86 --force"
             ], "group": "vc"},
             {"name": "VC - Redist 2013", "command": [
                 "winget install Microsoft.VCRedist.2013.x64 --force",
@@ -181,14 +184,14 @@ class InstallerGUI:
 
         log_frame = ttk.Frame(self.root, padding=10)
         log_frame.pack(fill='both', expand=True)
-        self.logger = ttk.ScrolledText(log_frame, height=10, wrap='word')
+        self.logger = ScrolledText(log_frame, height=10, wrap='word')
         self.logger.pack(fill='both', expand=True)
 
         btn_frame = ttk.Frame(self.root, padding=10)
         btn_frame.pack(fill='both', expand=True)
         self.install_button = ttk.Button(btn_frame, text=self.lang["install"], command=self.start_installation)
         self.install_button.pack(side='left', padx=5)
-        self.cancel_button = ttk.Button(btn_frame, text=self.lang["cancel_install"], command=self.cancel_installation, state=ttk.DISABLED)
+        self.cancel_button = ttk.Button(btn_frame, text=self.lang["cancel_install"], command=self.cancel_installation, state='disabled')
         self.cancel_button.pack(side='left', padx=5)
         self.close_button = ttk.Button(btn_frame, text=self.lang["close"], command=self.on_close)
         self.close_button.pack(side='right', padx=5)
@@ -212,9 +215,9 @@ class InstallerGUI:
     def cancel_installation(self):
         self.cancelled = True
         self.append_log(self.lang["installation_cancelled"])
-        self.install_button.config(state=ttk.NORMAL)
-        self.cancel_button.config(state=ttk.DISABLED)
-        self.close_button.config(state=ttk.NORMAL)
+        self.install_button.config(state='normal')
+        self.cancel_button.config(state='disabled')
+        self.close_button.config(state='normal')
 
     def append_log(self, message):
         """Append a message to the log widget and log it to a file."""
@@ -293,9 +296,9 @@ class InstallerGUI:
             messagebox.showwarning(self.lang["no_selection"], self.lang["select_one"])
             return
         self.cancelled = False
-        self.install_button.config(state=ttk.DISABLED)
-        self.cancel_button.config(state=ttk.NORMAL)
-        self.close_button.config(state=ttk.DISABLED)
+        self.install_button.config(state='disabled')
+        self.cancel_button.config(state='normal')
+        self.close_button.config(state='disabled')
         installation_thread = threading.Thread(target=self.install_programs, args=(selected_programs,))
         installation_thread.start()
 
@@ -354,9 +357,9 @@ class InstallerGUI:
         else:
             self.queue.put({"type": "status", "message": self.lang["installation_cancelled"]})
         self.queue.put({"type": "log", "message": self.lang["installation_log_end"]})
-        self.root.after(0, lambda: self.install_button.config(state=ttk.NORMAL))
-        self.root.after(0, lambda: self.cancel_button.config(state=ttk.DISABLED))
-        self.root.after(0, lambda: self.close_button.config(state=ttk.NORMAL))
+        self.root.after(0, lambda: self.install_button.config(state='normal'))
+        self.root.after(0, lambda: self.cancel_button.config(state='disabled'))
+        self.root.after(0, lambda: self.close_button.config(state='normal'))
 
 
 def is_admin():
