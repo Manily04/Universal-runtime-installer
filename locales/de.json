@@ -36,5 +36,11 @@
     "export_log": "Log exportieren",
     "save_log_as": "Log speichern unter",
     "log_exported": "Log erfolgreich exportiert nach: {path}",
-    "export_error": "Fehler beim Exportieren des Logs: {error}"
+    "export_error": "Fehler beim Exportieren des Logs: {error}",
+    "tools": "Tools",
+    "sfc_system_scan": "SFC System Scan",
+    "running_sfc_scan": "SFC System Scan wird ausgeführt...",
+    "sfc_progress_status": "SFC Scan: {pct}%",
+    "sfc_scan_complete": "SFC Scan abgeschlossen.",
+    "sfc_scan_failed": "SFC Scan fehlgeschlagen (Exit-Code {code})."
 }

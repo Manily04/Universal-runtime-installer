@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import ctypes
 import locale
@@ -130,9 +131,11 @@ class InstallationManager:
         self.logger.info(self.lang["winget_up_to_date"])
         return True
 
-    def install_programs(self, selected_programs):
+    def install_programs(self, selected_programs, run_sfc=False):
         """Main installation loop."""
-        total_commands = sum(len(p['commands']) for p in selected_programs)
+        program_total = sum(len(p['commands']) for p in selected_programs)
+        sfc_weight = 1 if run_sfc else 0
+        total_units = max(program_total + sfc_weight, 1)
         completed_commands = 0
         failed_programs = []
 
@@ -142,7 +145,7 @@ class InstallationManager:
 
             self.queue.put({"type": "status", "message": self.lang["installing"].format(prog=program['name'])})
             self.logger.info(self.lang["installing"].format(prog=program['name']))
-            
+
             program_failed = False
             for cmd in program['commands']:
                 if self.cancelled:
@@ -153,9 +156,9 @@ class InstallationManager:
                     break
 
                 completed_commands += 1
-                
+
                 # Update total progress based on commands
-                total_progress = (completed_commands / total_commands) * 100
+                total_progress = (completed_commands / total_units) * 100
                 self.queue.put({"type": "progress_total", "value": total_progress})
 
                 if code != 0:
@@ -193,6 +196,13 @@ class InstallationManager:
             if program_failed:
                 failed_programs.append(program["name"])
 
+        sfc_failed = False
+        if run_sfc and not self.cancelled:
+            sfc_ok = self.run_sfc_scan(progress_offset=completed_commands, total_units=total_units)
+            if not sfc_ok and not self.cancelled:
+                sfc_failed = True
+                failed_programs.append("SFC System Scan")
+
         if not self.cancelled:
             if failed_programs:
                 failed_str = "\n".join(failed_programs)
@@ -202,6 +212,120 @@ class InstallationManager:
         else:
             self.queue.put({"type": "status", "message": self.lang["installation_cancelled"]})
             self.logger.warning(self.lang["installation_cancelled"])
+
+    def run_sfc_scan(self, progress_offset=0, total_units=1):
+        """Run 'sfc /scannow' in PowerShell and stream progress to the GUI."""
+        running_msg = self.lang.get("running_sfc_scan", "Running SFC System Scan...")
+        self.queue.put({"type": "status", "message": running_msg})
+        self.logger.info(running_msg)
+        # Start with indeterminate so the user sees activity even before sfc emits a percent.
+        self.queue.put({"type": "progress_indeterminate"})
+
+        # Force UTF-16 console output so we can decode sfc's progress reliably.
+        ps_command = (
+            "[Console]::OutputEncoding = [System.Text.Encoding]::Unicode; "
+            "sfc /scannow"
+        )
+        cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_command]
+
+        process = None
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+            )
+            self.current_process = process
+
+            buffer = b""
+            last_pct = -1
+            switched_to_determinate = False
+            percent_re = re.compile(r"(\d{1,3})\s*%")
+
+            while True:
+                if self.cancelled:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    return False
+
+                chunk = process.stdout.read1(512) if hasattr(process.stdout, "read1") else process.stdout.read(512)
+                if not chunk:
+                    if process.poll() is not None:
+                        break
+                    continue
+
+                buffer += chunk
+                even_len = (len(buffer) // 2) * 2
+                # Try UTF-16 LE first (set above); fall back if it looks wrong.
+                try:
+                    text = buffer[:even_len].decode("utf-16-le", errors="replace")
+                except Exception:
+                    text = buffer.decode("utf-8", errors="replace")
+                # Strip embedded NULs that survive a bad decode.
+                text = text.replace("\x00", "")
+
+                matches = percent_re.findall(text)
+                if matches:
+                    try:
+                        pct = int(matches[-1])
+                    except ValueError:
+                        pct = -1
+                    if 0 <= pct <= 100 and pct != last_pct:
+                        last_pct = pct
+                        if not switched_to_determinate:
+                            self.queue.put({"type": "progress_determinate"})
+                            switched_to_determinate = True
+                        progress_value = ((progress_offset + pct / 100.0) / total_units) * 100
+                        self.queue.put({"type": "progress_total", "value": progress_value})
+                        self.queue.put({
+                            "type": "status",
+                            "message": self.lang.get("sfc_progress_status", "SFC Scan: {pct}%").format(pct=pct),
+                        })
+
+            return_code = process.wait()
+
+            # Stop the indeterminate animation if we never switched.
+            if not switched_to_determinate:
+                self.queue.put({"type": "progress_determinate"})
+            # Settle progress at the SFC slot's full share.
+            final_progress = ((progress_offset + 1) / total_units) * 100
+            self.queue.put({"type": "progress_total", "value": final_progress})
+
+            # Decode and log final output (skip the noisy pure-percent lines).
+            try:
+                full_text = buffer.decode("utf-16-le", errors="replace")
+            except Exception:
+                full_text = buffer.decode("utf-8", errors="replace")
+            full_text = full_text.replace("\x00", "").replace("\r", "\n")
+            for line in full_text.split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                # Skip pure progress ticks like "Verification 42% complete."
+                if percent_re.search(line) and len(line) < 80:
+                    continue
+                self.logger.info(line)
+
+            if return_code == 0:
+                self.logger.info(self.lang.get("sfc_scan_complete", "SFC scan complete."))
+                return True
+            self.logger.error(
+                self.lang.get("sfc_scan_failed", "SFC scan failed (exit code {code}).").format(code=return_code)
+            )
+            return False
+        except Exception as e:
+            self.logger.error(
+                self.lang.get("sfc_scan_failed", "SFC scan failed (exit code {code}).").format(code=str(e))
+            )
+            return False
+        finally:
+            if self.current_process is process:
+                self.current_process = None
 
 class InstallerGUI:
     def __init__(self, root):
@@ -216,6 +340,7 @@ class InstallerGUI:
         self.vars = [ttk.BooleanVar(value=True) for _ in self.programs]
         self.select_all_var = ttk.BooleanVar(value=True)
         self.vc_select_all_var = ttk.BooleanVar(value=True)
+        self.sfc_var = ttk.BooleanVar(value=False)
         
         self.setup_ui()
         self.setup_logging()
@@ -336,12 +461,22 @@ class InstallerGUI:
 
         # Other column
         other_frame = ttk.Frame(group_frame)
-        other_frame.grid(row=0, column=1, sticky="ne", padx=(20, 0))
+        other_frame.grid(row=0, column=1, sticky="nw", padx=(20, 0))
         ttk.Label(other_frame, text=self.lang.get("other_installs", "Other"), font=("Arial", 10, "bold")).pack(anchor="w")
-        
+
         for i, program in enumerate(self.programs):
             if program.get("group") != "vc":
                 ttk.Checkbutton(other_frame, text=program['name'], variable=self.vars[i]).pack(anchor="w", padx=(10, 0))
+
+        # Tools column
+        tools_frame = ttk.Frame(group_frame)
+        tools_frame.grid(row=0, column=2, sticky="nw", padx=(20, 0))
+        ttk.Label(tools_frame, text=self.lang.get("tools", "Tools"), font=("Arial", 10, "bold")).pack(anchor="w")
+        ttk.Checkbutton(
+            tools_frame,
+            text=self.lang.get("sfc_system_scan", "SFC System Scan"),
+            variable=self.sfc_var,
+        ).pack(anchor="w", padx=(10, 0))
 
         # Progress
         progress_frame = ttk.Frame(self.root, padding=10)
@@ -426,8 +561,31 @@ class InstallerGUI:
                     self.logger_text.insert('end', text, level)
                     self.logger_text.see('end')
                 elif msg["type"] == "progress_total":
+                    if str(self.progress_total.cget('mode')) != 'determinate':
+                        try:
+                            self.progress_total.stop()
+                        except Exception:
+                            pass
+                        self.progress_total.configure(mode='determinate')
                     self.progress_total['value'] = msg["value"]
+                elif msg["type"] == "progress_indeterminate":
+                    self.progress_total.configure(mode='indeterminate')
+                    try:
+                        self.progress_total.start(80)
+                    except Exception:
+                        pass
+                elif msg["type"] == "progress_determinate":
+                    try:
+                        self.progress_total.stop()
+                    except Exception:
+                        pass
+                    self.progress_total.configure(mode='determinate')
                 elif msg["type"] == "finish":
+                    try:
+                        self.progress_total.stop()
+                    except Exception:
+                        pass
+                    self.progress_total.configure(mode='determinate')
                     self.handle_finish(msg)
         except queue.Empty:
             pass
@@ -461,21 +619,34 @@ class InstallerGUI:
             )
 
     def start_installation(self):
-        if not self.manager.check_winget():
-            messagebox.showerror(self.lang["error"], self.lang.get("winget_not_ready", self.lang["winget_not_installed"]))
+        selected_programs = [p for p, v in zip(self.programs, self.vars) if v.get()]
+        run_sfc = bool(self.sfc_var.get())
+
+        if not selected_programs and not run_sfc:
+            messagebox.showwarning(self.lang["no_selection"], self.lang["select_one"])
             return
 
-        selected_programs = [p for p, v in zip(self.programs, self.vars) if v.get()]
-        if not selected_programs:
-            messagebox.showwarning(self.lang["no_selection"], self.lang["select_one"])
+        # winget is only required when actual programs are being installed.
+        if selected_programs and not self.manager.check_winget():
+            messagebox.showerror(self.lang["error"], self.lang.get("winget_not_ready", self.lang["winget_not_installed"]))
             return
 
         self.install_button.config(state='disabled')
         self.cancel_button.config(state='normal')
         self.manager.cancelled = False
+        try:
+            self.progress_total.stop()
+        except Exception:
+            pass
+        self.progress_total.configure(mode='determinate')
         self.progress_total['value'] = 0
-        
-        threading.Thread(target=self.manager.install_programs, args=(selected_programs,), daemon=True).start()
+
+        threading.Thread(
+            target=self.manager.install_programs,
+            args=(selected_programs,),
+            kwargs={"run_sfc": run_sfc},
+            daemon=True,
+        ).start()
 
 def is_admin():
     try:
