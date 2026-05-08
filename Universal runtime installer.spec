@@ -2,11 +2,11 @@
 
 
 a = Analysis(
-    ['Programm.py'],
+    ['Universal runtime installer.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=[],
+    datas=[('programs.json', '.'), ('locales', 'locales'), ('logo.ico', '.')],
+    hiddenimports=['ttkbootstrap'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

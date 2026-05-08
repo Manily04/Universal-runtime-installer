@@ -1,0 +1,76 @@
+[
+    {
+        "name": "DirectX",
+        "commands": [
+            ["powershell", "-Command", "$tempPath = Join-Path $env:TEMP 'directx_Jun2010_redist.exe'; Invoke-WebRequest -Uri 'https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe' -OutFile $tempPath; Start-Process -FilePath $tempPath -ArgumentList '/Q','/T:C:\\DirectXTemp' -Wait; Start-Process -FilePath 'C:\\DirectXTemp\\DXSETUP.exe' -ArgumentList '/silent' -Wait; Remove-Item $tempPath -Force; Remove-Item 'C:\\DirectXTemp' -Recurse -Force"]
+        ],
+        "group": "other"
+    },
+    {
+        "name": "Java Runtime",
+        "commands": [
+            ["winget", "install", "Oracle.JavaRuntimeEnvironment", "--force", "--accept-package-agreements", "--silent", "--disable-interactivity"]
+        ],
+        "group": "other"
+    },
+    {
+        "name": "Net Runtime 8",
+        "commands": [
+            ["winget", "install", "Microsoft.DotNet.DesktopRuntime.8", "--force", "--accept-package-agreements", "--silent", "--disable-interactivity"]
+        ],
+        "group": "other"
+    },
+    {
+        "name": "Net Runtime 10",
+        "commands": [
+            ["winget", "install", "Microsoft.DotNet.DesktopRuntime.10", "--force", "--accept-package-agreements", "--silent", "--disable-interactivity"]
+        ],
+        "group": "other"
+    },
+    {
+        "name": "OpenAL",
+        "commands": [
+            ["winget", "install", "CreativeTechnology.OpenAL", "--force", "--accept-package-agreements", "--silent", "--disable-interactivity"]
+        ],
+        "group": "other"
+    },
+    {
+        "name": "XNA Redist",
+        "commands": [
+            ["winget", "install", "Microsoft.XNARedist", "--force", "--accept-package-agreements", "--silent", "--disable-interactivity"]
+        ],
+        "group": "other"
+    },
+    {
+        "name": "VC - Redist 2010",
+        "commands": [
+            ["winget", "install", "Microsoft.VCRedist.2010.x64", "--force", "--accept-package-agreements", "--silent", "--disable-interactivity"],
+            ["winget", "install", "Microsoft.VCRedist.2010.x86", "--force", "--accept-package-agreements", "--silent", "--disable-interactivity"]
+        ],
+        "group": "vc"
+    },
+    {
+        "name": "VC - Redist 2012",
+        "commands": [
+            ["winget", "install", "Microsoft.VCRedist.2012.x64", "--force", "--accept-package-agreements", "--silent", "--disable-interactivity"],
+            ["winget", "install", "Microsoft.VCRedist.2012.x86", "--force", "--accept-package-agreements", "--silent", "--disable-interactivity"]
+        ],
+        "group": "vc"
+    },
+    {
+        "name": "VC - Redist 2013",
+        "commands": [
+            ["winget", "install", "Microsoft.VCRedist.2013.x64", "--force", "--accept-package-agreements", "--silent", "--disable-interactivity"],
+            ["winget", "install", "Microsoft.VCRedist.2013.x86", "--force", "--accept-package-agreements", "--silent", "--disable-interactivity"]
+        ],
+        "group": "vc"
+    },
+    {
+        "name": "VC - Redist 2015-2022",
+        "commands": [
+            ["winget", "install", "Microsoft.VCRedist.2015+.x64", "--force", "--accept-package-agreements", "--silent", "--disable-interactivity"],
+            ["winget", "install", "Microsoft.VCRedist.2015+.x86", "--force", "--accept-package-agreements", "--silent", "--disable-interactivity"]
+        ],
+        "group": "vc"
+    }
+]
